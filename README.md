@@ -1,4 +1,4 @@
-# modus
+# Modus
 
 A new Flutter project.
 
