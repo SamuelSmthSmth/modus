@@ -1,0 +1,342 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:csv/csv.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../models/task_model.dart';
+
+class TaskProvider extends ChangeNotifier {
+  static const String _taskStorageKey = 'active_task';
+  static const String _templateStorageKey = 'saved_routine_templates';
+
+  MainTask _activeTask = MainTask(
+    title: 'My Routine',
+    phases: [],
+    currentPhaseIndex: 0,
+  );
+
+  List<RoutineTemplate> savedTemplates = [];
+
+  TaskProvider() {
+    unawaited(_loadTaskFromDisk());
+    unawaited(loadTemplatesFromDisk());
+  }
+
+  MainTask get activeTask => _activeTask;
+
+  Future<void> loadTemplatesFromDisk() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawTemplates =
+        prefs.getStringList(_templateStorageKey) ?? const <String>[];
+
+    final templates = <RoutineTemplate>[];
+    for (final rawTemplate in rawTemplates) {
+      try {
+        final decoded = jsonDecode(rawTemplate);
+        if (decoded is Map<String, dynamic>) {
+          templates.add(RoutineTemplate.fromJson(decoded));
+        }
+      } catch (error) {
+        debugPrint('Failed to load template: $error');
+      }
+    }
+
+    savedTemplates = templates;
+    notifyListeners();
+  }
+
+  void setActiveTask(MainTask task) {
+    _activeTask = task;
+    unawaited(_saveTaskToDisk());
+    notifyListeners();
+  }
+
+  Future<void> saveCurrentAsTemplate(String name) async {
+    final templateName = name.trim().isEmpty
+        ? 'Untitled Template'
+        : name.trim();
+    final phases = List<TaskPhase>.from(_activeTask.phases);
+    final originalDurationSeconds = phases.fold<int>(
+      0,
+      (total, phase) => total + phase.duration.inSeconds,
+    );
+
+    savedTemplates = [
+      ...savedTemplates,
+      RoutineTemplate(
+        name: templateName,
+        phases: phases,
+        originalDurationSeconds: originalDurationSeconds,
+      ),
+    ];
+
+    await _saveTemplatesToDisk();
+    notifyListeners();
+  }
+
+  Future<void> applyTemplate(RoutineTemplate template) async {
+    _activeTask = MainTask(
+      title: _activeTask.title,
+      phases: List<TaskPhase>.from(template.phases),
+      currentPhaseIndex: 0,
+    );
+
+    await _saveTaskToDisk();
+    notifyListeners();
+  }
+
+  Future<void> deleteTemplate(int index) async {
+    if (index < 0 || index >= savedTemplates.length) {
+      return;
+    }
+
+    savedTemplates = List<RoutineTemplate>.from(savedTemplates)
+      ..removeAt(index);
+    await _saveTemplatesToDisk();
+    notifyListeners();
+  }
+
+  bool advancePhase() {
+    final task = _activeTask;
+
+    final nextIndex = task.currentPhaseIndex + 1;
+    if (nextIndex < task.phases.length) {
+      task.currentPhaseIndex = nextIndex;
+      notifyListeners();
+      return true;
+    }
+
+    return false;
+  }
+
+  void loadMockTask() {
+    _activeTask = MainTask(
+      title: 'Biology Past Paper',
+      phases: [
+        TaskPhase(
+          name: 'Setup and Scan Questions',
+          duration: const Duration(minutes: 8),
+        ),
+        TaskPhase(
+          name: 'Section A: Structured Answers',
+          duration: const Duration(minutes: 35),
+        ),
+        TaskPhase(
+          name: 'Section B: Extended Response',
+          duration: const Duration(minutes: 30),
+        ),
+        TaskPhase(
+          name: 'Review and Corrections',
+          duration: const Duration(minutes: 12),
+        ),
+      ],
+      currentPhaseIndex: 0,
+    );
+
+    notifyListeners();
+  }
+
+  Future<String?> importRoutineFromCSV() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return null; // User cancelled
+      }
+
+      final file = result.files.first;
+
+      // Read bytes: try file.bytes first, fall back to reading from path
+      Uint8List? bytes = file.bytes;
+      if (bytes == null) {
+        if (file.path == null) {
+          return 'Could not access file';
+        }
+        try {
+          bytes = await File(file.path!).readAsBytes();
+        } catch (e) {
+          return 'Failed to read file: $e';
+        }
+      }
+
+      // Decode bytes to string using UTF-8
+      String csvContent;
+      try {
+        csvContent = utf8.decode(bytes);
+      } catch (e) {
+        return 'Invalid file encoding. Please use UTF-8 encoding.';
+      }
+
+      // Parse CSV
+      List<List<dynamic>> rows;
+      try {
+        rows = const CsvToListConverter().convert(csvContent);
+      } catch (e) {
+        return 'Failed to parse CSV: $e';
+      }
+
+      if (rows.isEmpty) {
+        return 'CSV file is empty';
+      }
+
+      // Smart header detection: check if first row contains mostly text (likely a header)
+      final firstRow = rows[0];
+      final isHeaderRow =
+          firstRow.length >= 1 &&
+          (firstRow[0].toString().toLowerCase().contains('name') ||
+              firstRow[0].toString().toLowerCase().contains('phase') ||
+              firstRow[0].toString().toLowerCase().contains('duration'));
+
+      final dataRows = isHeaderRow && rows.length > 1
+          ? rows.skip(1).toList()
+          : rows;
+
+      final phases = <TaskPhase>[];
+      int skippedRows = 0;
+
+      for (final row in dataRows) {
+        if (row.isEmpty || row.length < 2) {
+          skippedRows++;
+          continue;
+        }
+
+        try {
+          final phaseName = (row[0]).toString().trim();
+          if (phaseName.isEmpty) {
+            skippedRows++;
+            continue;
+          }
+
+          // Parse duration with error handling
+          int minutes;
+          try {
+            final durationStr = (row[1]).toString().trim();
+            minutes = int.parse(durationStr);
+            if (minutes <= 0) {
+              debugPrint('Skipping row with invalid duration: $durationStr');
+              skippedRows++;
+              continue;
+            }
+          } catch (e) {
+            debugPrint('Failed to parse duration: ${row[1]}, error: $e');
+            skippedRows++;
+            continue;
+          }
+
+          // Parse autoStart (optional, defaults to false)
+          bool autoStart = false;
+          if (row.length > 2) {
+            final autoStartStr = (row[2]).toString().trim().toLowerCase();
+            autoStart =
+                autoStartStr == 'true' ||
+                autoStartStr == '1' ||
+                autoStartStr == 'yes';
+          }
+
+          phases.add(
+            TaskPhase(
+              name: phaseName,
+              duration: Duration(minutes: minutes),
+              autoStartNext: autoStart,
+            ),
+          );
+        } catch (e) {
+          debugPrint('Error processing row: $row, error: $e');
+          skippedRows++;
+          continue;
+        }
+      }
+
+      if (phases.isEmpty) {
+        return 'No valid phases found in CSV. Please check the format: Name, Duration(minutes), AutoStart(true/false)';
+      }
+
+      _activeTask = MainTask(
+        title: _activeTask.title,
+        phases: phases,
+        currentPhaseIndex: 0,
+      );
+
+      await _saveTaskToDisk();
+      notifyListeners();
+
+      if (skippedRows > 0) {
+        debugPrint(
+          'Imported $phases.length phases (skipped $skippedRows malformed rows)',
+        );
+      }
+
+      return null; // Success
+    } catch (error) {
+      debugPrint('Failed to import CSV: $error');
+      return 'Unexpected error: $error';
+    }
+  }
+
+  Future<void> _saveTaskToDisk() async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = <String, dynamic>{
+      'title': _activeTask.title,
+      'currentPhaseIndex': _activeTask.currentPhaseIndex,
+      'phases': _activeTask.phases
+          .map(
+            (phase) => <String, dynamic>{
+              'name': phase.name,
+              'durationSeconds': phase.duration.inSeconds,
+              'autoStartNext': phase.autoStartNext,
+            },
+          )
+          .toList(),
+    };
+
+    await prefs.setString(_taskStorageKey, jsonEncode(payload));
+  }
+
+  Future<void> _saveTemplatesToDisk() async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = savedTemplates
+        .map((template) => jsonEncode(template.toJson()))
+        .toList();
+    await prefs.setStringList(_templateStorageKey, payload);
+  }
+
+  Future<void> _loadTaskFromDisk() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_taskStorageKey);
+    if (raw == null || raw.isEmpty) {
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final phasesJson = (decoded['phases'] as List<dynamic>? ?? <dynamic>[]);
+
+      final phases = phasesJson
+          .whereType<Map<String, dynamic>>()
+          .map(
+            (item) => TaskPhase(
+              name: item['name'] as String? ?? 'Phase',
+              duration: Duration(seconds: item['durationSeconds'] as int? ?? 0),
+              autoStartNext: item['autoStartNext'] as bool? ?? false,
+            ),
+          )
+          .toList();
+
+      _activeTask = MainTask(
+        title: decoded['title'] as String? ?? 'My Routine',
+        phases: phases,
+        currentPhaseIndex: decoded['currentPhaseIndex'] as int? ?? 0,
+      );
+      notifyListeners();
+    } catch (error) {
+      debugPrint('Failed to load task from disk: $error');
+    }
+  }
+}
