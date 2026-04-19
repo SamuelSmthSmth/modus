@@ -3,7 +3,6 @@
 
 A nice, aesthetic productivity timer I developed for a lot of platforms. It's made more to be out of the way to let you focus on studying
 
-![GitHub last commit](https://img.shields.io/github/last-commit/SamuelSmthSmthSmth/modus?color=B8CC52&style=flat-square)
 ![Flutter Version](https://img.shields.io/badge/Flutter-v3.x-blue?style=flat-square&logo=flutter)
 
 ---
