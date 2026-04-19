@@ -1,9 +1,9 @@
 # Modus
 **A Minimalist, Real-Time Multiplayer Study Engine.**
 
-A nice, aesthetic productivity timer I developed for a lot of platforms. It's made more to be out of the way to let you focus on studying 
+A nice, aesthetic productivity timer I developed for a lot of platforms. It's made more to be out of the way to let you focus on studying
 
-![GitHub last commit](https://img.shields.io/github/last-commit/YOUR_USERNAME/modus?color=B8CC52&style=flat-square)
+![GitHub last commit](https://img.shields.io/github/last-commit/SamuelSmthSmthSmth/modus?color=B8CC52&style=flat-square)
 ![Flutter Version](https://img.shields.io/badge/Flutter-v3.x-blue?style=flat-square&logo=flutter)
 
 ---
@@ -44,4 +44,25 @@ A nice, aesthetic productivity timer I developed for a lot of platforms. It's ma
 ## How to Run
 1. **Clone the repo:**
    ```bash
-   git clone [https://github.com/YOUR_USERNAME/modus.git](https://github.com/YOUR_USERNAME/modus.git)
+   git clone https://github.com/SamuelSmthSmthSmth/modus.git
+   cd modus
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   flutter pub get
+   ```
+
+3. **Run the app:**
+   ```bash
+   # For Android
+   flutter run
+
+   # For Linux Desktop
+   flutter run -d linux
+   ```
+
+---
+
+## 📜 License
+Personal use / Educational. Built with ❤️ for the ultimate study grind.
