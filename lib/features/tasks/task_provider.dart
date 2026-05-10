@@ -189,7 +189,7 @@ class TaskProvider extends ChangeNotifier {
       // Smart header detection: check if first row contains mostly text (likely a header)
       final firstRow = rows[0];
       final isHeaderRow =
-          firstRow.length >= 1 &&
+          firstRow.isNotEmpty &&
           (firstRow[0].toString().toLowerCase().contains('name') ||
               firstRow[0].toString().toLowerCase().contains('phase') ||
               firstRow[0].toString().toLowerCase().contains('duration'));

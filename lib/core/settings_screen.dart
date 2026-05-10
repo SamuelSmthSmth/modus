@@ -217,7 +217,7 @@ class SettingsScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String>(
-                            value: settingsProvider.selectedFontFamily,
+                            initialValue: settingsProvider.selectedFontFamily,
                             decoration: InputDecoration(
                               filled: true,
                               fillColor: theme.colorScheme.surface,
