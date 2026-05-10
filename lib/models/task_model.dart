@@ -1,3 +1,5 @@
+import 'workflow_node.dart';
+
 class TaskPhase {
   final String name;
   final Duration duration;
@@ -63,6 +65,32 @@ class RoutineTemplate {
           .map(TaskPhase.fromJson)
           .toList(),
       originalDurationSeconds: json['originalDurationSeconds'] as int? ?? 0,
+    );
+  }
+}
+
+class FlowTemplate {
+  final String name;
+  final List<WorkflowNode> startingNodes;
+
+  FlowTemplate({
+    required this.name,
+    required this.startingNodes,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'startingNodes': startingNodes.map((node) => node.toJson()).toList(),
+  };
+
+  factory FlowTemplate.fromJson(Map<String, dynamic> json) {
+    final nodesJson = json['startingNodes'] as List<dynamic>? ?? const <dynamic>[];
+    return FlowTemplate(
+      name: json['name'] as String? ?? 'Untitled Flow',
+      startingNodes: nodesJson
+          .whereType<Map<String, dynamic>>()
+          .map(WorkflowNode.fromJson)
+          .toList(),
     );
   }
 }

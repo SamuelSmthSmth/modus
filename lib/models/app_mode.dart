@@ -1,7 +1,7 @@
 enum AppMode {
   timer,
   pomodoro,
-  zen
+  flow
 }
 
 // This simple enum will control the entire UI state of Modus.

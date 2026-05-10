@@ -5,9 +5,11 @@ import 'package:provider/provider.dart';
 import '../../core/settings_provider.dart';
 import '../../core/settings_screen.dart';
 import '../online/online_screen.dart';
+import '../tasks/flow_editor_view.dart';
 import '../tasks/roadmap_view.dart';
 import '../tasks/task_provider.dart';
 import '../../models/app_mode.dart';
+import '../../models/workflow_node.dart';
 import 'timer_logic.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _pulseController;
   int _selectedTabIndex = 1;
   AppMode _mode = AppMode.timer;
+  bool _isFlowDecisionDialogOpen = false;
 
   @override
   void initState() {
@@ -47,12 +50,14 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   String _formatDuration(Duration value) {
-    final totalSeconds = value.inSeconds.clamp(0, 5999);
-    final minutes = totalSeconds ~/ 60;
+    final totalSeconds = value.inSeconds.clamp(0, 359999);
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
     final seconds = totalSeconds % 60;
+    final hh = hours.toString().padLeft(2, '0');
     final mm = minutes.toString().padLeft(2, '0');
     final ss = seconds.toString().padLeft(2, '0');
-    return '$mm:$ss';
+    return '$hh:$mm:$ss';
   }
 
   void _syncPulse(bool isRunning) {
@@ -70,6 +75,11 @@ class _HomeScreenState extends State<HomeScreen>
 
     if (provider.isRunning) {
       await provider.pauseTimer();
+      return;
+    }
+
+    if (_mode == AppMode.flow) {
+      await provider.startOrResumeFlow();
       return;
     }
 
@@ -155,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 Expanded(
                   child: CupertinoTimerPicker(
-                    mode: CupertinoTimerPickerMode.ms,
+                    mode: CupertinoTimerPickerMode.hms,
                     initialTimerDuration: selected,
                     onTimerDurationChanged: (value) {
                       if (value <= Duration.zero) return;
@@ -176,7 +186,10 @@ class _HomeScreenState extends State<HomeScreen>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final settings = context.watch<SettingsProvider>();
-    final backgroundColor = _selectedTabIndex == 1 && _mode == AppMode.zen
+    final timerProvider = context.watch<TimerProvider>();
+    final taskProvider = context.watch<TaskProvider>();
+    _maybeShowFlowDecisionDialog(timerProvider, taskProvider);
+    final backgroundColor = _selectedTabIndex == 1 && _mode == AppMode.flow
         ? Colors.black
         : theme.scaffoldBackgroundColor;
     final foregroundColor = colorScheme.onSurface;
@@ -314,6 +327,67 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  void _maybeShowFlowDecisionDialog(
+    TimerProvider timerProvider,
+    TaskProvider taskProvider,
+  ) {
+    final decisionId = timerProvider.pendingDecisionNodeId;
+    if (_isFlowDecisionDialogOpen || decisionId == null) {
+      return;
+    }
+    final decisionNode = _findDecisionById(
+      taskProvider.activeFlow?.startingNodes ?? const <WorkflowNode>[],
+      decisionId,
+    );
+    if (decisionNode == null) {
+      return;
+    }
+
+    _isFlowDecisionDialogOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final chooseA = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Decision'),
+          content: Text(decisionNode.question),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(decisionNode.labelB),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(decisionNode.labelA),
+            ),
+          ],
+        ),
+      );
+      _isFlowDecisionDialogOpen = false;
+      await timerProvider.resolveFlowDecision(chooseA ?? true);
+    });
+  }
+
+  DecisionNode? _findDecisionById(List<WorkflowNode> nodes, String id) {
+    for (final node in nodes) {
+      if (node is DecisionNode && node.id == id) {
+        return node;
+      }
+      if (node is DecisionNode) {
+        final inA = _findDecisionById(node.pathA, id);
+        if (inA != null) return inA;
+        final inB = _findDecisionById(node.pathB, id);
+        if (inB != null) return inB;
+      }
+      if (node is LoopNode) {
+        final inLoop = _findDecisionById(node.tasks, id);
+        if (inLoop != null) return inLoop;
+      }
+    }
+    return null;
+  }
+
   Widget _buildTimerTab({
     required BuildContext context,
     required ThemeData theme,
@@ -382,8 +456,8 @@ class _HomeScreenState extends State<HomeScreen>
                     label: Text('Pomodoro'),
                   ),
                   ButtonSegment<AppMode>(
-                    value: AppMode.zen,
-                    label: Text('Zen'),
+                    value: AppMode.flow,
+                    label: Text('Flow'),
                   ),
                 ],
                 selected: {_mode},
@@ -402,41 +476,11 @@ class _HomeScreenState extends State<HomeScreen>
                   duration: const Duration(milliseconds: 350),
                   switchInCurve: Curves.easeOut,
                   switchOutCurve: Curves.easeIn,
-                  child: _mode == AppMode.zen
-                      ? zenAnimationEnabled
-                            ? AnimatedBuilder(
-                                key: const ValueKey('zen-circle'),
-                                animation: _pulseController,
-                                builder: (context, child) {
-                                  return Transform.scale(
-                                    scale: _pulseController.value,
-                                    child: child,
-                                  );
-                                },
-                                child: Container(
-                                  width: 168,
-                                  height: 168,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: foregroundColor.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                    ),
-                                    color: foregroundColor.withValues(
-                                      alpha: 0.06,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : const SizedBox.expand(
-                                key: ValueKey('zen-static'),
-                                child: ColoredBox(color: Colors.black),
-                              )
+                  child: _mode == AppMode.flow
+                      ? const FlowEditorView(key: ValueKey('flow-editor'))
                       : GestureDetector(
                           key: const ValueKey('time-text'),
-                          onTap:
-                              (_mode == AppMode.timer || _mode == AppMode.zen)
+                          onTap: _mode == AppMode.timer
                               ? () => _openDurationPicker(
                                   context: context,
                                   provider: provider,

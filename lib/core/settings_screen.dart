@@ -335,11 +335,11 @@ class SettingsScreen extends StatelessWidget {
                     SwitchListTile(
                       secondary: const Icon(Icons.self_improvement_outlined),
                       title: Text(
-                        'Zen Mode breathing animation',
+                        'Flow Mode breathing animation',
                         style: TextStyle(color: foreground),
                       ),
                       subtitle: Text(
-                        'Disable to show a static pure black Zen view.',
+                        'Disable to show a static pure black Flow view.',
                         style: TextStyle(color: muted),
                       ),
                       value: settingsProvider.zenAnimationEnabled,

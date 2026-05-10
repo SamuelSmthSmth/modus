@@ -6,12 +6,15 @@ import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../models/task_model.dart';
+import '../../models/workflow_node.dart';
 
 class TaskProvider extends ChangeNotifier {
   static const String _taskStorageKey = 'active_task';
   static const String _templateStorageKey = 'saved_routine_templates';
+  static const String _flowTemplateStorageKey = 'saved_flow_templates';
 
   MainTask _activeTask = MainTask(
     title: 'My Routine',
@@ -20,10 +23,14 @@ class TaskProvider extends ChangeNotifier {
   );
 
   List<RoutineTemplate> savedTemplates = [];
+  List<FlowTemplate> flowTemplates = [];
+  FlowTemplate? activeFlow;
+  String? activeNodeId;
 
   TaskProvider() {
     unawaited(_loadTaskFromDisk());
     unawaited(loadTemplatesFromDisk());
+    unawaited(loadFlowTemplates());
   }
 
   MainTask get activeTask => _activeTask;
@@ -46,6 +53,27 @@ class TaskProvider extends ChangeNotifier {
     }
 
     savedTemplates = templates;
+    notifyListeners();
+  }
+
+  Future<void> loadFlowTemplates() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawTemplates =
+        prefs.getStringList(_flowTemplateStorageKey) ?? const <String>[];
+
+    final templates = <FlowTemplate>[];
+    for (final rawTemplate in rawTemplates) {
+      try {
+        final decoded = jsonDecode(rawTemplate);
+        if (decoded is Map<String, dynamic>) {
+          templates.add(FlowTemplate.fromJson(decoded));
+        }
+      } catch (error) {
+        debugPrint('Failed to load flow template: $error');
+      }
+    }
+
+    flowTemplates = templates;
     notifyListeners();
   }
 
@@ -75,6 +103,61 @@ class TaskProvider extends ChangeNotifier {
     ];
 
     await _saveTemplatesToDisk();
+    notifyListeners();
+  }
+
+  Future<void> saveFlowTemplates() async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = flowTemplates
+        .map((template) => jsonEncode(template.toJson()))
+        .toList();
+    await prefs.setStringList(_flowTemplateStorageKey, payload);
+  }
+
+  void addNodeToFlow(List<WorkflowNode> targetList, WorkflowNode newNode) {
+    targetList.add(newNode);
+    unawaited(saveFlowTemplates());
+    notifyListeners();
+  }
+
+  void setActiveNodeId(String? nodeId) {
+    activeNodeId = nodeId;
+    notifyListeners();
+  }
+
+  void removeNodeFromFlow(List<WorkflowNode> targetList, WorkflowNode node) {
+    targetList.remove(node);
+    unawaited(saveFlowTemplates());
+    notifyListeners();
+  }
+
+  void updateNodeInFlow(
+    List<WorkflowNode> targetList,
+    WorkflowNode oldNode,
+    WorkflowNode updatedNode,
+  ) {
+    final index = targetList.indexOf(oldNode);
+    if (index == -1) {
+      return;
+    }
+    targetList[index] = updatedNode;
+    unawaited(saveFlowTemplates());
+    notifyListeners();
+  }
+
+  Future<void> createNewFlow(String name) async {
+    final flowName = name.trim().isEmpty ? 'Untitled Flow' : name.trim();
+    final template = FlowTemplate(
+      name: flowName,
+      startingNodes: [
+        StartNode(id: const Uuid().v4(), type: 'start', title: 'START'),
+      ],
+    );
+
+    flowTemplates = [...flowTemplates, template];
+    activeFlow = template;
+    activeNodeId = null;
+    await saveFlowTemplates();
     notifyListeners();
   }
 

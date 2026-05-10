@@ -119,8 +119,8 @@ class StatsProvider extends ChangeNotifier {
         return 'Timer';
       case AppMode.pomodoro:
         return 'Pomodoro';
-      case AppMode.zen:
-        return 'Zen';
+      case AppMode.flow:
+        return 'Flow';
     }
   }
 

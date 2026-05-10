@@ -37,7 +37,9 @@ class StudySession {
 
   static AppMode _parseAppMode(String value) {
     if (value.contains('pomodoro')) return AppMode.pomodoro;
-    if (value.contains('zen')) return AppMode.zen;
+    if (value.contains('flow') || value.contains('zen')) {
+      return AppMode.flow;
+    }
     return AppMode.timer;
   }
 
