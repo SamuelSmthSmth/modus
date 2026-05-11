@@ -20,9 +20,9 @@ class ModusApp extends StatelessWidget {
   static const Color _lightBackground = Color(0xFFF6F7F9);
   static const Color _lightSurface = Color(0xFFFFFFFF);
 
-  static const Color _ayuDarkBackground = Color(0xFF0B0E14);
-  static const Color _ayuDarkSurface = Color(0xFF151A24);
-  static const Color _ayuDarkSurfaceAlt = Color(0xFF1D2433);
+  static const Color _neutralDarkBackground = Color(0xFF121212);
+  static const Color _neutralDarkSurface = Color(0xFF1E1E1E);
+  static const Color _neutralDarkSurfaceAlt = Color(0xFF2A2A2A);
 
   ThemeData _buildLightTheme(Color accentColor, String fontFamily) {
     final scheme = ColorScheme.light(
@@ -88,12 +88,23 @@ class ModusApp extends StatelessWidget {
     String fontFamily,
   ) {
     final darkBackground = isOledMode
-        ? const Color(0xFF000000)
-        : _ayuDarkBackground;
-    final darkSurface = isOledMode ? const Color(0xFF0A0A0A) : _ayuDarkSurface;
+        ? Colors.black
+        : Color.alphaBlend(
+            accentColor.withOpacity(0.03),
+            _neutralDarkBackground,
+          );
+    final darkSurface = isOledMode
+        ? const Color(0xFF111111)
+        : Color.alphaBlend(
+            accentColor.withOpacity(0.05),
+            _neutralDarkSurface,
+          );
     final darkDivider = isOledMode
         ? const Color(0xFF111111)
-        : _ayuDarkSurfaceAlt;
+        : Color.alphaBlend(
+            accentColor.withOpacity(0.08),
+            _neutralDarkSurfaceAlt,
+          );
     final scheme = ColorScheme.dark(
       primary: accentColor,
       secondary: accentColor,
@@ -109,6 +120,7 @@ class ModusApp extends StatelessWidget {
       colorScheme: scheme,
       fontFamily: GoogleFonts.getFont(fontFamily).fontFamily,
       scaffoldBackgroundColor: darkBackground,
+      canvasColor: isOledMode ? Colors.black : darkBackground,
       cardColor: darkSurface,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

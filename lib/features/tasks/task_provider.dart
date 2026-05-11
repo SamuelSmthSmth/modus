@@ -133,15 +133,55 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteFlowTemplate(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+
+    final removedActiveFlow = activeFlow?.name == trimmed;
+    flowTemplates = flowTemplates
+        .where((template) => template.name != trimmed)
+        .toList();
+
+    if (removedActiveFlow) {
+      activeFlow = null;
+      activeNodeId = null;
+    }
+
+    await saveFlowTemplates();
+    await _persistActiveFlowId();
+    notifyListeners();
+  }
+
   Future<void> saveActiveFlowAsNewTemplate(String name) async {
     final flow = activeFlow;
     if (flow == null) {
       return;
     }
     final trimmed = name.trim().isEmpty ? 'Untitled Flow' : name.trim();
-    final copy = flow.copyAsNewNamed(trimmed);
-    flowTemplates = [...flowTemplates, copy];
-    activeFlow = copy;
+    final existingIndex = flowTemplates.indexWhere(
+      (template) => template.name == trimmed,
+    );
+    final snapshot = FlowTemplate(
+      id: existingIndex == -1
+          ? const Uuid().v4()
+          : flowTemplates[existingIndex].id,
+      name: trimmed,
+      startingNodes: _cloneFlowNodes(flow.startingNodes),
+    );
+
+    if (existingIndex == -1) {
+      flowTemplates = [...flowTemplates, snapshot];
+    } else {
+      final insertionIndex = existingIndex;
+      flowTemplates = flowTemplates
+          .where((template) => template.name != trimmed)
+          .toList();
+      flowTemplates.insert(insertionIndex, snapshot);
+    }
+
+    activeFlow = snapshot;
     activeNodeId = null;
     await saveFlowTemplates();
     await _persistActiveFlowId();
@@ -183,6 +223,12 @@ class TaskProvider extends ChangeNotifier {
         .map((template) => jsonEncode(template.toJson()))
         .toList();
     await prefs.setStringList(_flowTemplateStorageKey, payload);
+  }
+
+  List<WorkflowNode> _cloneFlowNodes(List<WorkflowNode> nodes) {
+    return nodes
+        .map((node) => WorkflowNode.fromJson(node.toJson()))
+        .toList();
   }
 
   void addNodeToFlow(List<WorkflowNode> targetList, WorkflowNode newNode) {

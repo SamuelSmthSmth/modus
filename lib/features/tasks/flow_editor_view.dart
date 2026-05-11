@@ -42,10 +42,9 @@ class FlowEditorView extends StatelessWidget {
     );
 
     final screenSize = MediaQuery.sizeOf(context);
-    final appBackground = theme.scaffoldBackgroundColor;
 
     return Container(
-      color: appBackground,
+      color: Colors.transparent,
       child: InteractiveViewer(
         constrained: false,
         boundaryMargin: EdgeInsets.all(double.infinity),
@@ -251,6 +250,11 @@ class FlowEditorView extends StatelessWidget {
     required String? activeNodeId,
   }) {
     final isActive = node.id == activeNodeId;
+    final theme = Theme.of(context);
+    final surfaceColor = theme.cardColor;
+    final onSurfaceColor = theme.colorScheme.onSurface;
+    final onSurfaceVariantColor = theme.colorScheme.onSurfaceVariant;
+    final subtleBorder = accentColor.withValues(alpha: 0.3);
 
     if (node is StartNode) {
       return _wrapEditable(
@@ -259,8 +263,10 @@ class FlowEditorView extends StatelessWidget {
           _buildPillNode(
             icon: Icons.play_arrow_rounded,
             label: node.title,
-            background: const Color(0xFF101825),
-            border: const Color(0xFF5A7195),
+            background: surfaceColor,
+            border: subtleBorder,
+            foregroundColor: onSurfaceColor,
+            iconColor: onSurfaceVariantColor,
           ),
           isActive,
           accentColor: accentColor,
@@ -276,11 +282,9 @@ class FlowEditorView extends StatelessWidget {
             width: 180,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFF2A1B38),
+              color: surfaceColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFF8D6EB9).withValues(alpha: 0.5),
-              ),
+              border: Border.all(color: subtleBorder),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -288,13 +292,13 @@ class FlowEditorView extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.timer, size: 14, color: Colors.white70),
+                    Icon(Icons.timer, size: 14, color: onSurfaceVariantColor),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         node.title,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: onSurfaceColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -306,7 +310,7 @@ class FlowEditorView extends StatelessWidget {
                 Text(
                   '${node.durationMinutes}:00m',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.72),
+                    color: onSurfaceVariantColor,
                     fontSize: 12,
                   ),
                 ),
@@ -336,7 +340,13 @@ class FlowEditorView extends StatelessWidget {
                   onTap: () =>
                       _showDecisionEditDialog(context, targetList, node),
                   child: _decorateNodeActiveState(
-                    _buildDecisionDiamond(node),
+                      _buildDecisionDiamond(
+                        node,
+                        background: surfaceColor,
+                        borderColor: subtleBorder,
+                        foregroundColor: onSurfaceColor,
+                        iconColor: onSurfaceVariantColor,
+                      ),
                     isActive,
                     accentColor: accentColor,
                   ),
@@ -395,8 +405,10 @@ class FlowEditorView extends StatelessWidget {
           _buildPillNode(
             icon: Icons.check_rounded,
             label: node.title,
-            background: const Color(0xFF11161A),
-            border: const Color(0xFF5F6874),
+            background: surfaceColor,
+            border: subtleBorder,
+            foregroundColor: onSurfaceColor,
+            iconColor: onSurfaceVariantColor,
           ),
           isActive,
           accentColor: accentColor,
@@ -414,13 +426,13 @@ class FlowEditorView extends StatelessWidget {
             width: 200,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.transparent,
+              color: surfaceColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF607080)),
+              border: Border.all(color: subtleBorder),
             ),
             child: Text(
               '🔁 Loops to: $targetName',
-              style: const TextStyle(color: Colors.white, fontSize: 12),
+              style: TextStyle(color: onSurfaceColor, fontSize: 12),
             ),
           ),
           isActive,
@@ -437,15 +449,15 @@ class FlowEditorView extends StatelessWidget {
             width: 180,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFF3A3D46),
+              color: surfaceColor,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+              border: Border.all(color: subtleBorder),
             ),
             child: Text(
               node.actionType,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.86),
+                color: onSurfaceColor,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -546,16 +558,22 @@ class FlowEditorView extends StatelessWidget {
     return targetId;
   }
 
-  Widget _buildDecisionDiamond(DecisionNode node) {
+  Widget _buildDecisionDiamond(
+    DecisionNode node, {
+    required Color background,
+    required Color borderColor,
+    required Color foregroundColor,
+    required Color iconColor,
+  }) {
     return Transform.rotate(
       angle: 0.785398,
       child: Container(
         width: 120,
         height: 120,
         decoration: BoxDecoration(
-          color: const Color(0xFF2E3138),
+          color: background,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.8)),
+          border: Border.all(color: borderColor),
         ),
         child: Transform.rotate(
           angle: -0.785398,
@@ -565,18 +583,18 @@ class FlowEditorView extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.help_outline,
                     size: 15,
-                    color: Colors.white70,
+                    color: iconColor,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       node.question,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: foregroundColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -596,6 +614,8 @@ class FlowEditorView extends StatelessWidget {
     required String label,
     required Color background,
     required Color border,
+    required Color foregroundColor,
+    required Color iconColor,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -607,12 +627,12 @@ class FlowEditorView extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white70),
+          Icon(icon, size: 14, color: iconColor),
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: foregroundColor,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),

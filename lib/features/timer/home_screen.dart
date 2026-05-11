@@ -187,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen>
     final backgroundColor = theme.scaffoldBackgroundColor;
     final foregroundColor = colorScheme.onSurface;
     final quietColor = colorScheme.onSurfaceVariant;
-    final desktopBackground = colorScheme.surface;
+    final desktopBackground = backgroundColor;
 
     final tabs = [
       const OnlineScreen(embedded: true),
@@ -205,82 +205,75 @@ class _HomeScreenState extends State<HomeScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= 800;
-
-        return Scaffold(
-          backgroundColor: isDesktop ? desktopBackground : backgroundColor,
-          body: isDesktop
-              ? Theme(
-                  data: theme.copyWith(
-                    scaffoldBackgroundColor: desktopBackground,
+        final body = isDesktop
+            ? Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: _buildTimerTab(
+                      context: context,
+                      theme: theme,
+                      foregroundColor: foregroundColor,
+                      quietColor: quietColor,
+                      zenAnimationEnabled: settings.zenAnimationEnabled,
+                      isDesktop: true,
+                    ),
                   ),
-                  child: ColoredBox(
-                    color: desktopBackground,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: _buildTimerTab(
-                            context: context,
-                            theme: theme,
-                            foregroundColor: foregroundColor,
-                            quietColor: quietColor,
-                            zenAnimationEnabled: settings.zenAnimationEnabled,
-                            isDesktop: true,
-                          ),
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    indent: 24,
+                    endIndent: 24,
+                    color: colorScheme.outlineVariant.withValues(
+                      alpha: 0.22,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          20,
+                          16,
+                          24,
+                          16,
                         ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          indent: 24,
-                          endIndent: 24,
-                          color: colorScheme.outlineVariant.withValues(
-                            alpha: 0.22,
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: SafeArea(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                20,
-                                16,
-                                24,
-                                16,
-                              ),
-                              child: SingleChildScrollView(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      const OnlineScreen(embedded: true),
-                                      const SizedBox(height: 16),
-                                      Divider(
-                                        height: 1,
-                                        thickness: 1,
-                                        color: colorScheme.outlineVariant
-                                            .withValues(alpha: 0.28),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      SizedBox(
-                                        height: 360,
-                                        child: const RoadmapView(
-                                          embedded: true,
-                                        ),
-                                      ),
-                                    ],
+                        child: SingleChildScrollView(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.stretch,
+                              children: [
+                                const OnlineScreen(embedded: true),
+                                const SizedBox(height: 16),
+                                Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: colorScheme.outlineVariant
+                                      .withValues(alpha: 0.28),
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  height: 360,
+                                  child: const RoadmapView(
+                                    embedded: true,
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                )
-              : IndexedStack(index: _selectedTabIndex, children: tabs),
+                    ),
+                  ],
+              )
+            : IndexedStack(index: _selectedTabIndex, children: tabs);
+
+        return Scaffold(
+          backgroundColor: isDesktop ? desktopBackground : backgroundColor,
+          body: body,
           bottomNavigationBar: isDesktop
               ? null
               : BottomNavigationBar(
@@ -560,11 +553,7 @@ class _RoutineTemplateBar extends StatelessWidget {
         );
       }
 
-      var flowId = tasks.activeFlow?.id;
-      if (flowId == null ||
-          !tasks.flowTemplates.any((template) => template.id == flowId)) {
-        flowId = tasks.flowTemplates.first.id;
-      }
+      final flowId = tasks.activeFlow?.id;
 
       return ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
@@ -613,6 +602,22 @@ class _RoutineTemplateBar extends StatelessWidget {
                       : () => _promptSaveNewTemplate(context, AppMode.flow),
                   icon: const Icon(Icons.add_box_outlined, size: 18),
                   label: const Text('Save as New'),
+                ),
+                IconButton(
+                  tooltip: 'Delete current template',
+                  onPressed: tasks.activeFlow == null
+                      ? null
+                      : () => context
+                          .read<TaskProvider>()
+                          .deleteFlowTemplate(tasks.activeFlow!.name),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  style: IconButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(32, 32),
+                    foregroundColor:
+                        theme.colorScheme.error.withValues(alpha: 0.9),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                 ),
               ],
             ),
