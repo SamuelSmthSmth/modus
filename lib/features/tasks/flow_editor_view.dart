@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../timer/timer_logic.dart';
 import '../../models/workflow_node.dart';
 import 'task_provider.dart';
 
@@ -27,7 +29,7 @@ class FlowEditorView extends StatelessWidget {
 
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
-    final baselineConnector = theme.colorScheme.outline.withValues(alpha: 0.55);
+    final baselineConnector = theme.colorScheme.onSurface.withValues(alpha: 0.15);
     final activeNodeId = provider.activeNodeId;
 
     final jumpTargets = _collectJumpTargets(activeFlow.startingNodes);
@@ -75,6 +77,7 @@ class FlowEditorView extends StatelessWidget {
     List<WorkflowNode> targetList,
     List<_JumpTarget> jumpTargets,
   ) async {
+      HapticFeedback.lightImpact();
     final provider = context.read<TaskProvider>();
     final selectedType = await showModalBottomSheet<_NewNodeType>(
       context: context,
@@ -257,16 +260,22 @@ class FlowEditorView extends StatelessWidget {
     final subtleBorder = accentColor.withValues(alpha: 0.3);
 
     if (node is StartNode) {
+      final borderColor = isActive
+          ? accentColor
+          : Colors.white.withValues(alpha: 0.25);
+      final borderWidth = isActive ? 1.5 : 1.0;
       return _wrapEditable(
         onTap: () => _showStartEditDialog(context, targetList, node),
         child: _decorateNodeActiveState(
           _buildPillNode(
             icon: Icons.play_arrow_rounded,
             label: node.title,
-            background: surfaceColor,
-            border: subtleBorder,
+            background: surfaceColor.withOpacity(0.6),
+            border: borderColor,
+            borderWidth: borderWidth,
+            borderRadius: 16,
             foregroundColor: onSurfaceColor,
-            iconColor: onSurfaceVariantColor,
+            iconColor: isActive ? accentColor : Colors.white70,
           ),
           isActive,
           accentColor: accentColor,
@@ -275,47 +284,80 @@ class FlowEditorView extends StatelessWidget {
     }
 
     if (node is WorkNode) {
+      final borderColor = isActive
+          ? accentColor
+          : Colors.white.withValues(alpha: 0.25);
+      final borderWidth = isActive ? 1.5 : 1.0;
+      final progress = isActive ? context.watch<TimerProvider>().activePhaseProgress : 0.0;
       return _wrapEditable(
         onTap: () => _showWorkEditDialog(context, targetList, node),
         child: _decorateNodeActiveState(
-          Container(
-            width: 180,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: subtleBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+          Stack(
+            children: [
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.centerLeft,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                    ),
+                    child: FractionallySizedBox(
+                      widthFactor: progress,
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 180,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: surfaceColor.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor, width: borderWidth),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.timer, size: 14, color: onSurfaceVariantColor),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        node.title,
-                        style: TextStyle(
-                          color: onSurfaceColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.timer,
+                          size: 14,
+                          color: isActive ? accentColor : Colors.white70,
                         ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            node.title,
+                            style: TextStyle(
+                              color: onSurfaceColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${node.durationMinutes}:00m',
+                      style: TextStyle(
+                        color: onSurfaceVariantColor,
+                        fontSize: 12,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '${node.durationMinutes}:00m',
-                  style: TextStyle(
-                    color: onSurfaceVariantColor,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
           isActive,
           accentColor: accentColor,
@@ -324,6 +366,10 @@ class FlowEditorView extends StatelessWidget {
     }
 
     if (node is DecisionNode) {
+      final borderColor = isActive
+          ? accentColor
+          : Colors.white.withValues(alpha: 0.25);
+      final borderWidth = isActive ? 1.5 : 1.0;
       final pathAActive = _listSubtreeContainsActive(node.pathA, activeNodeId);
       final pathBActive = _listSubtreeContainsActive(node.pathB, activeNodeId);
       final spineActive = isActive || pathAActive || pathBActive;
@@ -340,13 +386,14 @@ class FlowEditorView extends StatelessWidget {
                   onTap: () =>
                       _showDecisionEditDialog(context, targetList, node),
                   child: _decorateNodeActiveState(
-                      _buildDecisionDiamond(
-                        node,
-                        background: surfaceColor,
-                        borderColor: subtleBorder,
-                        foregroundColor: onSurfaceColor,
-                        iconColor: onSurfaceVariantColor,
-                      ),
+                    _buildDecisionDiamond(
+                      node,
+                      background: surfaceColor,
+                      borderColor: borderColor,
+                      borderWidth: borderWidth,
+                      foregroundColor: onSurfaceColor,
+                      iconColor: isActive ? accentColor : Colors.white70,
+                    ),
                     isActive,
                     accentColor: accentColor,
                   ),
@@ -417,6 +464,10 @@ class FlowEditorView extends StatelessWidget {
     }
 
     if (node is JumpNode) {
+      final borderColor = isActive
+          ? accentColor
+          : Colors.white.withValues(alpha: 0.25);
+      final borderWidth = isActive ? 1.5 : 1.0;
       final targetName = _resolveTargetName(node.targetNodeId, jumpTargets);
       return _wrapEditable(
         onTap: () =>
@@ -424,11 +475,11 @@ class FlowEditorView extends StatelessWidget {
         child: _decorateNodeActiveState(
           Container(
             width: 200,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: subtleBorder),
+              color: surfaceColor.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor, width: borderWidth),
             ),
             child: Text(
               '🔁 Loops to: $targetName',
@@ -442,16 +493,20 @@ class FlowEditorView extends StatelessWidget {
     }
 
     if (node is ActionNode) {
+      final borderColor = isActive
+          ? accentColor
+          : Colors.white.withValues(alpha: 0.25);
+      final borderWidth = isActive ? 1.5 : 1.0;
       return _wrapEditable(
         onTap: () => _showActionEditDialog(context, targetList, node),
         child: _decorateNodeActiveState(
           Container(
             width: 180,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: subtleBorder),
+              color: surfaceColor.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor, width: borderWidth),
             ),
             child: Text(
               node.actionType,
@@ -488,7 +543,7 @@ class FlowEditorView extends StatelessWidget {
       children: [
         Container(
           width: 24,
-          height: 2,
+          height: 1.5,
           color: branchHasActive ? accentColor.withValues(alpha: 0.9) : baselineConnector,
         ),
         const SizedBox(width: 8),
@@ -562,6 +617,7 @@ class FlowEditorView extends StatelessWidget {
     DecisionNode node, {
     required Color background,
     required Color borderColor,
+    required double borderWidth,
     required Color foregroundColor,
     required Color iconColor,
   }) {
@@ -571,15 +627,15 @@ class FlowEditorView extends StatelessWidget {
         width: 120,
         height: 120,
         decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: borderColor),
+          color: background.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: borderWidth),
         ),
         child: Transform.rotate(
           angle: -0.785398,
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -614,15 +670,17 @@ class FlowEditorView extends StatelessWidget {
     required String label,
     required Color background,
     required Color border,
+    double borderWidth = 1.0,
+    double borderRadius = 16.0,
     required Color foregroundColor,
     required Color iconColor,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
+        color: background.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: border, width: borderWidth),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -649,7 +707,7 @@ class FlowEditorView extends StatelessWidget {
   }) {
     return Container(
       width: 36,
-      height: 2,
+      height: 1.5,
       color: emphasize
           ? accentColor.withValues(alpha: 0.9)
           : baselineConnector,
@@ -664,20 +722,16 @@ class FlowEditorView extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: isActive
             ? [
                 BoxShadow(
-                  color: accentColor.withValues(alpha: 0.28),
-                  blurRadius: 18,
-                  spreadRadius: 2,
+                  color: accentColor.withValues(alpha: 0.2),
+                  blurRadius: 24,
+                  spreadRadius: -4,
                 ),
               ]
             : null,
-        border: Border.all(
-          color: isActive ? accentColor : Colors.transparent,
-          width: isActive ? 2 : 0,
-        ),
       ),
       child: child,
     );
@@ -685,7 +739,10 @@ class FlowEditorView extends StatelessWidget {
 
   Widget _wrapEditable({required VoidCallback onTap, required Widget child}) {
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       borderRadius: BorderRadius.circular(14),
       child: child,
     );
@@ -714,6 +771,94 @@ class FlowEditorView extends StatelessWidget {
     );
   }
 
+  Widget _buildModernDialog(
+    BuildContext context, {
+    required String title,
+    required Widget content,
+    required List<Widget> actions,
+  }) {
+    final theme = Theme.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Container(
+        width: 420,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 18),
+            content,
+            const SizedBox(height: 24),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 12,
+              runSpacing: 12,
+              children: actions,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDialogButton(
+    BuildContext context, {
+    required String label,
+    required VoidCallback onTap,
+    required bool filled,
+    bool destructive = false,
+  }) {
+    final theme = Theme.of(context);
+    final baseColor = destructive ? Colors.redAccent : theme.colorScheme.primary;
+    final textColor = destructive
+        ? Colors.redAccent
+        : (filled ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface);
+    final backgroundColor = filled
+        ? baseColor.withValues(alpha: 0.16)
+        : Colors.transparent;
+    final borderColor = destructive
+        ? Colors.redAccent.withValues(alpha: 0.28)
+        : (filled
+            ? baseColor.withValues(alpha: 0.28)
+            : Colors.white.withValues(alpha: 0.1));
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: borderColor),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: textColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showStartDialog(
     BuildContext context,
     TaskProvider provider,
@@ -722,19 +867,25 @@ class FlowEditorView extends StatelessWidget {
     final titleController = TextEditingController(text: 'START');
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create Start Block'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Create Start Block',
         content: TextField(
           controller: titleController,
           decoration: const InputDecoration(labelText: 'Start Label'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
+              HapticFeedback.mediumImpact();
               provider.addNodeToFlow(
                 targetList,
                 StartNode(
@@ -745,7 +896,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -764,8 +915,9 @@ class FlowEditorView extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Create Work Block'),
+        builder: (context, setState) => _buildModernDialog(
+          dialogContext,
+          title: 'Create Work Block',
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -798,12 +950,16 @@ class FlowEditorView extends StatelessWidget {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
+            _buildDialogButton(
+              dialogContext,
+              label: 'Cancel',
+              onTap: () => Navigator.of(dialogContext).pop(),
+              filled: false,
             ),
-            FilledButton(
-              onPressed: () {
+            _buildDialogButton(
+              dialogContext,
+              label: 'Save',
+              onTap: () {
                 provider.addNodeToFlow(
                   targetList,
                   WorkNode(
@@ -816,7 +972,7 @@ class FlowEditorView extends StatelessWidget {
                 );
                 Navigator.of(dialogContext).pop();
               },
-              child: const Text('Save'),
+              filled: true,
             ),
           ],
         ),
@@ -835,8 +991,9 @@ class FlowEditorView extends StatelessWidget {
     final bottomController = TextEditingController(text: 'No');
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create Decision'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Create Decision',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -861,12 +1018,16 @@ class FlowEditorView extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.addNodeToFlow(
                 targetList,
                 DecisionNode(
@@ -881,7 +1042,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -899,19 +1060,24 @@ class FlowEditorView extends StatelessWidget {
     final controller = TextEditingController(text: 'playSound');
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create Action'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Create Action',
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(labelText: 'Action'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.addNodeToFlow(
                 targetList,
                 ActionNode(
@@ -922,7 +1088,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -938,19 +1104,24 @@ class FlowEditorView extends StatelessWidget {
     final controller = TextEditingController(text: 'END');
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create End Block'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Create End Block',
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(labelText: 'End Label'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.addNodeToFlow(
                 targetList,
                 EndNode(
@@ -961,7 +1132,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -981,8 +1152,9 @@ class FlowEditorView extends StatelessWidget {
     var selectedId = jumpTargets.first.id;
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create Jump Node'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Create Jump Node',
         content: StatefulBuilder(
           builder: (context, setState) => DropdownButtonFormField<String>(
             initialValue: selectedId,
@@ -1003,12 +1175,16 @@ class FlowEditorView extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.addNodeToFlow(
                 targetList,
                 JumpNode(
@@ -1019,7 +1195,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -1035,19 +1211,24 @@ class FlowEditorView extends StatelessWidget {
     final controller = TextEditingController(text: node.title);
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit Start Block'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Edit Start Block',
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(labelText: 'Start Label'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.updateNodeInFlow(
                 targetList,
                 node,
@@ -1059,7 +1240,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -1079,8 +1260,9 @@ class FlowEditorView extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Edit Work Block'),
+        builder: (context, setState) => _buildModernDialog(
+          dialogContext,
+          title: 'Edit Work Block',
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1113,20 +1295,26 @@ class FlowEditorView extends StatelessWidget {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () {
+            _buildDialogButton(
+              dialogContext,
+              label: 'Delete Node',
+              destructive: true,
+              onTap: () {
                 provider.deleteNode(node.id);
                 Navigator.of(dialogContext).pop();
               },
-              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-              child: const Text('Delete Node'),
+              filled: false,
             ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
+            _buildDialogButton(
+              dialogContext,
+              label: 'Cancel',
+              onTap: () => Navigator.of(dialogContext).pop(),
+              filled: false,
             ),
-            FilledButton(
-              onPressed: () {
+            _buildDialogButton(
+              dialogContext,
+              label: 'Save',
+              onTap: () {
                 provider.updateNodeInFlow(
                   targetList,
                   node,
@@ -1140,7 +1328,7 @@ class FlowEditorView extends StatelessWidget {
                 );
                 Navigator.of(dialogContext).pop();
               },
-              child: const Text('Save'),
+              filled: true,
             ),
           ],
         ),
@@ -1216,8 +1404,9 @@ class FlowEditorView extends StatelessWidget {
     final bottomController = TextEditingController(text: node.labelB);
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit Decision'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Edit Decision',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1242,20 +1431,26 @@ class FlowEditorView extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Delete Node',
+            destructive: true,
+            onTap: () {
               provider.deleteNode(node.id);
               Navigator.of(dialogContext).pop();
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-            child: const Text('Delete Node'),
+            filled: false,
           ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.updateNodeInFlow(
                 targetList,
                 node,
@@ -1271,7 +1466,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -1290,27 +1485,34 @@ class FlowEditorView extends StatelessWidget {
     final controller = TextEditingController(text: node.actionType);
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit Action'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Edit Action',
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(labelText: 'Action'),
         ),
         actions: [
-          TextButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Delete Node',
+            destructive: true,
+            onTap: () {
               provider.deleteNode(node.id);
               Navigator.of(dialogContext).pop();
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-            child: const Text('Delete Node'),
+            filled: false,
           ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.updateNodeInFlow(
                 targetList,
                 node,
@@ -1322,7 +1524,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -1339,19 +1541,24 @@ class FlowEditorView extends StatelessWidget {
     final controller = TextEditingController(text: node.title);
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit End Block'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Edit End Block',
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(labelText: 'End Label'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
               provider.updateNodeInFlow(
                 targetList,
                 node,
@@ -1363,7 +1570,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),
@@ -1386,8 +1593,9 @@ class FlowEditorView extends StatelessWidget {
         : jumpTargets.first.id;
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit Jump Node'),
+      builder: (dialogContext) => _buildModernDialog(
+        dialogContext,
+        title: 'Edit Jump Node',
         content: StatefulBuilder(
           builder: (context, setState) => DropdownButtonFormField<String>(
             initialValue: selectedId,
@@ -1408,12 +1616,17 @@ class FlowEditorView extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+          _buildDialogButton(
+            dialogContext,
+            label: 'Cancel',
+            onTap: () => Navigator.of(dialogContext).pop(),
+            filled: false,
           ),
-          FilledButton(
-            onPressed: () {
+          _buildDialogButton(
+            dialogContext,
+            label: 'Save',
+            onTap: () {
+              HapticFeedback.mediumImpact();
               provider.updateNodeInFlow(
                 targetList,
                 node,
@@ -1421,7 +1634,7 @@ class FlowEditorView extends StatelessWidget {
               );
               Navigator.of(dialogContext).pop();
             },
-            child: const Text('Save'),
+            filled: true,
           ),
         ],
       ),

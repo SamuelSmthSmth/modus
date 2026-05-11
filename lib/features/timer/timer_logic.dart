@@ -45,6 +45,16 @@ class TimerProvider extends ChangeNotifier {
   Duration get activeSessionDuration => _activeSessionDuration;
   String? get pendingDecisionNodeId => _pendingDecisionNodeId;
 
+  /// Returns the progress of the active phase (0.0 to 1.0)
+  double get activePhaseProgress {
+    if (_activeSessionDuration <= Duration.zero) return 0.0;
+    final total = _activeSessionDuration.inMilliseconds;
+    final remaining = _remaining.inMilliseconds;
+    if (total <= 0) return 1.0;
+    final elapsed = (total - remaining).clamp(0, total);
+    return elapsed / total;
+  }
+
   Duration customDurationForMode(AppMode mode) {
     return _customDurations[mode] ?? const Duration(minutes: 10);
   }

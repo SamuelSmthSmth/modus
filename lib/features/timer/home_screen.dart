@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/settings_provider.dart';
@@ -168,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen>
                     onTimerDurationChanged: (value) {
                       if (value <= Duration.zero) return;
                       selected = value;
+                      HapticFeedback.selectionClick();
                     },
                   ),
                 ),
