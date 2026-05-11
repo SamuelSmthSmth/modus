@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/app_navigator.dart';
 import '../../core/settings_provider.dart';
 import '../../models/app_mode.dart';
 import '../../models/study_session.dart';
@@ -33,6 +34,10 @@ class TimerProvider extends ChangeNotifier {
     AppMode.flow: const Duration(minutes: 30),
   };
   String? _pendingDecisionNodeId;
+  bool _isDecisionDialogOpen = false;
+
+  /// Kind of session this countdown belongs to (independent of the visible tab / [_mode]).
+  AppMode? _countdownSessionMode;
 
   // Getters for the UI
   Duration get remaining => _remaining;
@@ -75,8 +80,10 @@ class TimerProvider extends ChangeNotifier {
   }
 
   /// Start the timer and save the timestamp
-  Future<void> startTimer(Duration duration) async {
+  Future<void> startTimer(Duration duration, {AppMode? sessionMode}) async {
     if (duration <= Duration.zero) return;
+
+    _countdownSessionMode = sessionMode ?? _countdownSessionMode ?? _mode;
 
     final prefs = await SharedPreferences.getInstance();
     _endTime = DateTime.now().add(duration);
@@ -117,6 +124,8 @@ class TimerProvider extends ChangeNotifier {
     _activeSessionDuration = Duration.zero;
     _isRunning = false;
     _pendingDecisionNodeId = null;
+    _isDecisionDialogOpen = false;
+    _countdownSessionMode = null;
     _taskProvider?.setActiveNodeId(null);
 
     final prefs = await SharedPreferences.getInstance();
@@ -170,6 +179,7 @@ class TimerProvider extends ChangeNotifier {
     final decisionNode = decisionLocation.node as DecisionNode;
     final selectedPath = choosePathA ? decisionNode.pathA : decisionNode.pathB;
     _pendingDecisionNodeId = null;
+    _isDecisionDialogOpen = false;
 
     if (selectedPath.isEmpty) {
       final next = _nextInSameList(decisionLocation);
@@ -225,8 +235,10 @@ class TimerProvider extends ChangeNotifier {
       }
 
       // Log the session
+      final sessionKind = _countdownSessionMode ?? _mode;
+
       SessionType sessionType = SessionType.work;
-      if (_mode == AppMode.pomodoro) {
+      if (sessionKind == AppMode.pomodoro) {
         final taskProvider = _taskProvider;
         if (taskProvider != null) {
           final activeTask = taskProvider.activeTask;
@@ -242,7 +254,7 @@ class TimerProvider extends ChangeNotifier {
       if (statsProvider != null) {
         await statsProvider.logSession(
           durationInSeconds: durationInSeconds,
-          mode: _mode,
+          mode: sessionKind,
           type: sessionType,
         );
       }
@@ -253,6 +265,13 @@ class TimerProvider extends ChangeNotifier {
       }
       final shouldRestart = await _handlePomodoroPhaseCompletion();
       if (!shouldRestart) {
+        final keepSessionKind =
+            _pendingDecisionNodeId != null ||
+            (_countdownSessionMode == AppMode.flow &&
+                _taskProvider?.activeNodeId != null);
+        if (!keepSessionKind) {
+          _countdownSessionMode = null;
+        }
         notifyListeners();
       }
       return;
@@ -263,7 +282,7 @@ class TimerProvider extends ChangeNotifier {
   }
 
   Future<bool> _handleFlowNodeCompletion() async {
-    if (_mode != AppMode.flow) {
+    if (_countdownSessionMode != AppMode.flow) {
       return false;
     }
     final taskProvider = _taskProvider;
@@ -307,7 +326,7 @@ class TimerProvider extends ChangeNotifier {
       if (node is WorkNode) {
         _remaining = node.duration;
         if (autoRun || node.autoStart) {
-          await startTimer(node.duration);
+          await startTimer(node.duration, sessionMode: AppMode.flow);
           return true;
         }
         notifyListeners();
@@ -317,6 +336,7 @@ class TimerProvider extends ChangeNotifier {
       if (node is DecisionNode) {
         _pendingDecisionNodeId = node.id;
         notifyListeners();
+        unawaited(_showGlobalDecisionDialog(node));
         return false;
       }
 
@@ -403,8 +423,38 @@ class TimerProvider extends ChangeNotifier {
     return null;
   }
 
+  Future<void> _showGlobalDecisionDialog(DecisionNode decisionNode) async {
+    if (_isDecisionDialogOpen) {
+      return;
+    }
+    if (navigatorKey.currentContext == null) {
+      return;
+    }
+
+    _isDecisionDialogOpen = true;
+    final chooseA = await showDialog<bool>(
+      context: navigatorKey.currentContext!,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Decision'),
+        content: Text(decisionNode.question),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(decisionNode.labelB),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(decisionNode.labelA),
+          ),
+        ],
+      ),
+    );
+    await resolveFlowDecision(chooseA ?? true);
+  }
+
   Future<bool> _handlePomodoroPhaseCompletion() async {
-    if (_mode != AppMode.pomodoro) {
+    if (_countdownSessionMode != AppMode.pomodoro) {
       return false;
     }
 
@@ -433,7 +483,7 @@ class TimerProvider extends ChangeNotifier {
       return false;
     }
 
-    await startTimer(phase.duration);
+    await startTimer(phase.duration, sessionMode: AppMode.pomodoro);
     return true;
   }
 
@@ -465,6 +515,7 @@ class TimerProvider extends ChangeNotifier {
       if (_endTime!.isAfter(DateTime.now())) {
         _remaining = _endTime!.difference(DateTime.now());
         _isRunning = true;
+        _countdownSessionMode ??= _mode;
         _startTicker();
       } else {
         // Timer finished while app was closed

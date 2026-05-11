@@ -25,16 +25,24 @@ class FlowEditorView extends StatelessWidget {
       );
     }
 
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final baselineConnector = theme.colorScheme.outline.withValues(alpha: 0.55);
+    final activeNodeId = provider.activeNodeId;
+
     final jumpTargets = _collectJumpTargets(activeFlow.startingNodes);
     final nodes = _buildHorizontalSequence(
       context,
       activeFlow.startingNodes,
       activeFlow.startingNodes,
       jumpTargets,
+      accentColor: accent,
+      baselineConnector: baselineConnector,
+      activeNodeId: activeNodeId,
     );
 
     final screenSize = MediaQuery.sizeOf(context);
-    final appBackground = Theme.of(context).scaffoldBackgroundColor;
+    final appBackground = theme.scaffoldBackgroundColor;
 
     return Container(
       color: appBackground,
@@ -138,11 +146,21 @@ class FlowEditorView extends StatelessWidget {
     BuildContext context,
     List<WorkflowNode> nodes,
     List<WorkflowNode> targetList,
-    List<_JumpTarget> jumpTargets,
-  ) {
+    List<_JumpTarget> jumpTargets, {
+    required Color accentColor,
+    required Color baselineConnector,
+    required String? activeNodeId,
+  }) {
     final widgets = <Widget>[];
     if (nodes.isEmpty) {
-      widgets.add(_buildAddButton(context, targetList, jumpTargets));
+      widgets.add(
+        _buildAddButton(
+          context,
+          targetList,
+          jumpTargets,
+          accentColor: accentColor,
+        ),
+      );
       return widgets;
     }
 
@@ -150,22 +168,74 @@ class FlowEditorView extends StatelessWidget {
     for (var i = 0; i < nodes.length; i++) {
       final node = nodes[i];
       renderedLastNode = node;
-      widgets.add(_buildNode(context, node, targetList, jumpTargets));
+      widgets.add(
+        _buildNode(
+          context,
+          node,
+          targetList,
+          jumpTargets,
+          accentColor: accentColor,
+          baselineConnector: baselineConnector,
+          activeNodeId: activeNodeId,
+        ),
+      );
 
       if (_isTerminal(node)) {
         break;
       }
 
+      // Decision: branches own the + buttons; no main-row connector/+ after the block.
+      if (node is DecisionNode) {
+        continue;
+      }
+
       if (i < nodes.length - 1) {
-        widgets.add(_buildConnector());
-        widgets.add(_buildAddButton(context, targetList, jumpTargets));
-        widgets.add(_buildConnector());
+        final emphasize =
+            _listSubtreeContainsActive([nodes[i + 1]], activeNodeId);
+        widgets.add(
+          _buildConnector(
+            emphasize: emphasize,
+            accentColor: accentColor,
+            baselineConnector: baselineConnector,
+          ),
+        );
+        widgets.add(
+          _buildAddButton(
+            context,
+            targetList,
+            jumpTargets,
+            accentColor: accentColor,
+          ),
+        );
+        widgets.add(
+          _buildConnector(
+            emphasize: emphasize,
+            accentColor: accentColor,
+            baselineConnector: baselineConnector,
+          ),
+        );
       }
     }
 
-    if (renderedLastNode != null && !_isTerminal(renderedLastNode)) {
-      widgets.add(_buildConnector());
-      widgets.add(_buildAddButton(context, targetList, jumpTargets));
+    if (renderedLastNode != null &&
+        !_isTerminal(renderedLastNode) &&
+        renderedLastNode is! DecisionNode) {
+      final tailActive = _listSubtreeContainsActive(nodes, activeNodeId);
+      widgets.add(
+        _buildConnector(
+          emphasize: tailActive,
+          accentColor: accentColor,
+          baselineConnector: baselineConnector,
+        ),
+      );
+      widgets.add(
+        _buildAddButton(
+          context,
+          targetList,
+          jumpTargets,
+          accentColor: accentColor,
+        ),
+      );
     }
 
     return widgets;
@@ -175,9 +245,11 @@ class FlowEditorView extends StatelessWidget {
     BuildContext context,
     WorkflowNode node,
     List<WorkflowNode> targetList,
-    List<_JumpTarget> jumpTargets,
-  ) {
-    final activeNodeId = context.watch<TaskProvider>().activeNodeId;
+    List<_JumpTarget> jumpTargets, {
+    required Color accentColor,
+    required Color baselineConnector,
+    required String? activeNodeId,
+  }) {
     final isActive = node.id == activeNodeId;
 
     if (node is StartNode) {
@@ -191,6 +263,7 @@ class FlowEditorView extends StatelessWidget {
             border: const Color(0xFF5A7195),
           ),
           isActive,
+          accentColor: accentColor,
         ),
       );
     }
@@ -241,44 +314,77 @@ class FlowEditorView extends StatelessWidget {
             ),
           ),
           isActive,
+          accentColor: accentColor,
         ),
       );
     }
 
     if (node is DecisionNode) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          _wrapEditable(
-            onTap: () => _showDecisionEditDialog(context, targetList, node),
-            child: _decorateNodeActiveState(
-              _buildDecisionDiamond(node),
-              isActive,
-            ),
-          ),
-          _buildConnector(),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
+      final pathAActive = _listSubtreeContainsActive(node.pathA, activeNodeId);
+      final pathBActive = _listSubtreeContainsActive(node.pathB, activeNodeId);
+      final spineActive = isActive || pathAActive || pathBActive;
+      final spineColor =
+          spineActive ? accentColor.withValues(alpha: 0.9) : baselineConnector;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildBranchRow(
-                context: context,
-                label: 'A: ${node.labelA}',
-                labelColor: const Color(0xFFA9CF52),
-                nodes: node.pathA,
-                jumpTargets: jumpTargets,
+              Center(
+                child: _wrapEditable(
+                  onTap: () =>
+                      _showDecisionEditDialog(context, targetList, node),
+                  child: _decorateNodeActiveState(
+                    _buildDecisionDiamond(node),
+                    isActive,
+                    accentColor: accentColor,
+                  ),
+                ),
               ),
-              const SizedBox(height: 120),
-              _buildBranchRow(
-                context: context,
-                label: 'B: ${node.labelB}',
-                labelColor: const Color(0xFFFF7D87),
-                nodes: node.pathB,
-                jumpTargets: jumpTargets,
+              Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: spineColor, width: 2),
+                  ),
+                ),
+                padding: const EdgeInsets.only(left: 10),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildBranchRow(
+                      context: context,
+                      label: 'A: ${node.labelA}',
+                      labelColor: pathAActive
+                          ? accentColor
+                          : const Color(0xFFA9CF52),
+                      nodes: node.pathA,
+                      jumpTargets: jumpTargets,
+                      accentColor: accentColor,
+                      baselineConnector: baselineConnector,
+                      activeNodeId: activeNodeId,
+                    ),
+                    const SizedBox(height: 250),
+                    _buildBranchRow(
+                      context: context,
+                      label: 'B: ${node.labelB}',
+                      labelColor: pathBActive
+                          ? accentColor
+                          : const Color(0xFFFF7D87),
+                      nodes: node.pathB,
+                      jumpTargets: jumpTargets,
+                      accentColor: accentColor,
+                      baselineConnector: baselineConnector,
+                      activeNodeId: activeNodeId,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-        ],
+        ),
       );
     }
 
@@ -293,6 +399,7 @@ class FlowEditorView extends StatelessWidget {
             border: const Color(0xFF5F6874),
           ),
           isActive,
+          accentColor: accentColor,
         ),
       );
     }
@@ -317,6 +424,7 @@ class FlowEditorView extends StatelessWidget {
             ),
           ),
           isActive,
+          accentColor: accentColor,
         ),
       );
     }
@@ -344,6 +452,7 @@ class FlowEditorView extends StatelessWidget {
             ),
           ),
           isActive,
+          accentColor: accentColor,
         ),
       );
     }
@@ -357,21 +466,55 @@ class FlowEditorView extends StatelessWidget {
     required Color labelColor,
     required List<WorkflowNode> nodes,
     required List<_JumpTarget> jumpTargets,
+    required Color accentColor,
+    required Color baselineConnector,
+    required String? activeNodeId,
   }) {
+    final branchHasActive = _listSubtreeContainsActive(nodes, activeNodeId);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        Container(
+          width: 24,
+          height: 2,
+          color: branchHasActive ? accentColor.withValues(alpha: 0.9) : baselineConnector,
+        ),
+        const SizedBox(width: 8),
         Text(
           label,
           style: TextStyle(color: labelColor, fontWeight: FontWeight.w600),
         ),
         const SizedBox(width: 10),
-        ..._buildHorizontalSequence(context, nodes, nodes, jumpTargets),
+        ..._buildHorizontalSequence(
+          context,
+          nodes,
+          nodes,
+          jumpTargets,
+          accentColor: accentColor,
+          baselineConnector: baselineConnector,
+          activeNodeId: activeNodeId,
+        ),
       ],
     );
   }
 
   bool _isTerminal(WorkflowNode node) => node is EndNode || node is JumpNode;
+
+  bool _listSubtreeContainsActive(List<WorkflowNode> roots, String? activeId) {
+    if (activeId == null) return false;
+    for (final n in roots) {
+      if (n.id == activeId) return true;
+      if (n is DecisionNode) {
+        if (_listSubtreeContainsActive(n.pathA, activeId) ||
+            _listSubtreeContainsActive(n.pathB, activeId)) {
+          return true;
+        }
+      } else if (n is LoopNode) {
+        if (_listSubtreeContainsActive(n.tasks, activeId)) return true;
+      }
+    }
+    return false;
+  }
 
   List<_JumpTarget> _collectJumpTargets(List<WorkflowNode> roots) {
     final targets = <_JumpTarget>[];
@@ -479,15 +622,25 @@ class FlowEditorView extends StatelessWidget {
     );
   }
 
-  Widget _buildConnector() {
+  Widget _buildConnector({
+    required bool emphasize,
+    required Color accentColor,
+    required Color baselineConnector,
+  }) {
     return Container(
       width: 36,
       height: 2,
-      color: Colors.grey.withValues(alpha: 0.5),
+      color: emphasize
+          ? accentColor.withValues(alpha: 0.9)
+          : baselineConnector,
     );
   }
 
-  Widget _decorateNodeActiveState(Widget child, bool isActive) {
+  Widget _decorateNodeActiveState(
+    Widget child,
+    bool isActive, {
+    required Color accentColor,
+  }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       decoration: BoxDecoration(
@@ -495,14 +648,14 @@ class FlowEditorView extends StatelessWidget {
         boxShadow: isActive
             ? [
                 BoxShadow(
-                  color: const Color(0xFF8BFF67).withValues(alpha: 0.28),
+                  color: accentColor.withValues(alpha: 0.28),
                   blurRadius: 18,
                   spreadRadius: 2,
                 ),
               ]
             : null,
         border: Border.all(
-          color: isActive ? const Color(0xFF8BFF67) : Colors.transparent,
+          color: isActive ? accentColor : Colors.transparent,
           width: isActive ? 2 : 0,
         ),
       ),
@@ -521,8 +674,9 @@ class FlowEditorView extends StatelessWidget {
   Widget _buildAddButton(
     BuildContext context,
     List<WorkflowNode> targetList,
-    List<_JumpTarget> jumpTargets,
-  ) {
+    List<_JumpTarget> jumpTargets, {
+    required Color accentColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: OutlinedButton(
@@ -532,8 +686,8 @@ class FlowEditorView extends StatelessWidget {
           maximumSize: const Size(24, 24),
           padding: EdgeInsets.zero,
           shape: const CircleBorder(),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.38)),
-          foregroundColor: Colors.white,
+          side: BorderSide(color: accentColor.withValues(alpha: 0.65)),
+          foregroundColor: accentColor,
         ),
         child: const Icon(Icons.add, size: 12),
       ),
@@ -940,6 +1094,14 @@ class FlowEditorView extends StatelessWidget {
           ),
           actions: [
             TextButton(
+              onPressed: () {
+                provider.deleteNode(node.id);
+                Navigator.of(dialogContext).pop();
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+              child: const Text('Delete Node'),
+            ),
+            TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Cancel'),
             ),
@@ -1061,6 +1223,14 @@ class FlowEditorView extends StatelessWidget {
         ),
         actions: [
           TextButton(
+            onPressed: () {
+              provider.deleteNode(node.id);
+              Navigator.of(dialogContext).pop();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text('Delete Node'),
+          ),
+          TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Cancel'),
           ),
@@ -1107,6 +1277,14 @@ class FlowEditorView extends StatelessWidget {
           decoration: const InputDecoration(labelText: 'Action'),
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              provider.deleteNode(node.id);
+              Navigator.of(dialogContext).pop();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text('Delete Node'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Cancel'),

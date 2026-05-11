@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -103,79 +104,136 @@ class _TaskCreatorScreenState extends State<TaskCreatorScreen> {
 
   Future<void> _showAddPhaseDialog() async {
     final nameController = TextEditingController();
-    final minutesController = TextEditingController();
+    var selectedDuration = const Duration(minutes: 25);
 
     final result = await showDialog<TaskPhase>(
       context: context,
       builder: (context) {
         final theme = Theme.of(context);
         final colorScheme = theme.colorScheme;
-        return AlertDialog(
-          backgroundColor: colorScheme.surface,
-          surfaceTintColor: Colors.transparent,
-          title: Text(
-            'Add Phase',
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: colorScheme.onSurface,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                style: TextStyle(color: colorScheme.onSurface),
-                decoration: const InputDecoration(labelText: 'Phase name'),
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            backgroundColor: colorScheme.surface,
+            surfaceTintColor: Colors.transparent,
+            title: Text(
+              'Add Phase',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: minutesController,
-                keyboardType: TextInputType.number,
-                style: TextStyle(color: colorScheme.onSurface),
-                decoration: const InputDecoration(
-                  labelText: 'Duration (minutes)',
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  style: TextStyle(color: colorScheme.onSurface),
+                  decoration: const InputDecoration(labelText: 'Phase name'),
                 ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Duration'),
+                  subtitle: Text(_formatDurationHms(selectedDuration)),
+                  trailing: const Icon(Icons.timer_outlined),
+                  onTap: () async {
+                    final picked = await _showDurationPickerHms(
+                      context,
+                      selectedDuration,
+                    );
+                    if (picked != null) {
+                      setState(() => selectedDuration = picked);
+                    }
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final name = nameController.text.trim();
+                  if (name.isEmpty || selectedDuration <= Duration.zero) {
+                    return;
+                  }
+                  Navigator.of(
+                    context,
+                  ).pop(TaskPhase(name: name, duration: selectedDuration));
+                },
+                child: const Text('Add'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                final name = nameController.text.trim();
-                final minutes = int.tryParse(minutesController.text.trim());
-
-                if (name.isEmpty || minutes == null || minutes <= 0) {
-                  return;
-                }
-
-                Navigator.of(context).pop(
-                  TaskPhase(
-                    name: name,
-                    duration: Duration(minutes: minutes),
-                  ),
-                );
-              },
-              child: const Text('Add'),
-            ),
-          ],
         );
       },
     );
 
     nameController.dispose();
-    minutesController.dispose();
 
     if (result == null) return;
 
     setState(() {
       _phases.add(result);
     });
+  }
+
+  String _formatDurationHms(Duration duration) {
+    final h = duration.inHours;
+    final m = duration.inMinutes.remainder(60);
+    final s = duration.inSeconds.remainder(60);
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  Future<Duration?> _showDurationPickerHms(
+    BuildContext context,
+    Duration initial,
+  ) async {
+    var selected = initial;
+    return showModalBottomSheet<Duration>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: SizedBox(
+            height: 320,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(sheetContext).pop(selected),
+                        child: const Text('Set'),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: CupertinoTimerPicker(
+                    mode: CupertinoTimerPickerMode.hms,
+                    initialTimerDuration: selected,
+                    onTimerDurationChanged: (value) => selected = value,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _resetRoutine() {

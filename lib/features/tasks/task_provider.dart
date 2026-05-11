@@ -15,6 +15,7 @@ class TaskProvider extends ChangeNotifier {
   static const String _taskStorageKey = 'active_task';
   static const String _templateStorageKey = 'saved_routine_templates';
   static const String _flowTemplateStorageKey = 'saved_flow_templates';
+  static const String _activeFlowIdKey = 'active_flow_template_id';
 
   MainTask _activeTask = MainTask(
     title: 'My Routine',
@@ -62,10 +63,14 @@ class TaskProvider extends ChangeNotifier {
         prefs.getStringList(_flowTemplateStorageKey) ?? const <String>[];
 
     final templates = <FlowTemplate>[];
+    var needsResave = false;
     for (final rawTemplate in rawTemplates) {
       try {
         final decoded = jsonDecode(rawTemplate);
         if (decoded is Map<String, dynamic>) {
+          if (decoded['id'] == null) {
+            needsResave = true;
+          }
           templates.add(FlowTemplate.fromJson(decoded));
         }
       } catch (error) {
@@ -74,6 +79,72 @@ class TaskProvider extends ChangeNotifier {
     }
 
     flowTemplates = templates;
+    await _restoreActiveFlowFromPrefs(prefs);
+    if (needsResave && flowTemplates.isNotEmpty) {
+      await saveFlowTemplates();
+    }
+    notifyListeners();
+  }
+
+  Future<void> _persistActiveFlowId() async {
+    final flow = activeFlow;
+    final prefs = await SharedPreferences.getInstance();
+    if (flow == null) {
+      await prefs.remove(_activeFlowIdKey);
+      return;
+    }
+    await prefs.setString(_activeFlowIdKey, flow.id);
+  }
+
+  Future<void> _restoreActiveFlowFromPrefs(SharedPreferences prefs) async {
+    if (flowTemplates.isEmpty) {
+      activeFlow = null;
+      activeNodeId = null;
+      return;
+    }
+    final id = prefs.getString(_activeFlowIdKey);
+    FlowTemplate? match;
+    if (id != null) {
+      for (final t in flowTemplates) {
+        if (t.id == id) {
+          match = t;
+          break;
+        }
+      }
+    }
+    activeFlow = match ?? flowTemplates.first;
+    activeNodeId = null;
+  }
+
+  Future<void> setActiveFlowById(String templateId) async {
+    FlowTemplate? match;
+    for (final t in flowTemplates) {
+      if (t.id == templateId) {
+        match = t;
+        break;
+      }
+    }
+    if (match == null) {
+      return;
+    }
+    activeFlow = match;
+    activeNodeId = null;
+    await _persistActiveFlowId();
+    notifyListeners();
+  }
+
+  Future<void> saveActiveFlowAsNewTemplate(String name) async {
+    final flow = activeFlow;
+    if (flow == null) {
+      return;
+    }
+    final trimmed = name.trim().isEmpty ? 'Untitled Flow' : name.trim();
+    final copy = flow.copyAsNewNamed(trimmed);
+    flowTemplates = [...flowTemplates, copy];
+    activeFlow = copy;
+    activeNodeId = null;
+    await saveFlowTemplates();
+    await _persistActiveFlowId();
     notifyListeners();
   }
 
@@ -145,6 +216,66 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void deleteNode(String nodeId) {
+    final flow = activeFlow;
+    if (flow == null) {
+      return;
+    }
+    final deleted = _deleteNodeRecursive(flow.startingNodes, nodeId);
+    if (!deleted) {
+      return;
+    }
+    if (activeNodeId == nodeId ||
+        (activeNodeId != null &&
+            !_nodeExistsRecursive(flow.startingNodes, activeNodeId!))) {
+      activeNodeId = null;
+    }
+    unawaited(saveFlowTemplates());
+    notifyListeners();
+  }
+
+  bool _deleteNodeRecursive(List<WorkflowNode> nodes, String nodeId) {
+    for (var i = 0; i < nodes.length; i++) {
+      final node = nodes[i];
+      if (node.id == nodeId) {
+        nodes.removeAt(i);
+        return true;
+      }
+      if (node is DecisionNode) {
+        if (_deleteNodeRecursive(node.pathA, nodeId)) {
+          return true;
+        }
+        if (_deleteNodeRecursive(node.pathB, nodeId)) {
+          return true;
+        }
+      } else if (node is LoopNode) {
+        if (_deleteNodeRecursive(node.tasks, nodeId)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _nodeExistsRecursive(List<WorkflowNode> nodes, String nodeId) {
+    for (final node in nodes) {
+      if (node.id == nodeId) {
+        return true;
+      }
+      if (node is DecisionNode) {
+        if (_nodeExistsRecursive(node.pathA, nodeId) ||
+            _nodeExistsRecursive(node.pathB, nodeId)) {
+          return true;
+        }
+      } else if (node is LoopNode) {
+        if (_nodeExistsRecursive(node.tasks, nodeId)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   Future<void> createNewFlow(String name) async {
     final flowName = name.trim().isEmpty ? 'Untitled Flow' : name.trim();
     final template = FlowTemplate(
@@ -158,6 +289,7 @@ class TaskProvider extends ChangeNotifier {
     activeFlow = template;
     activeNodeId = null;
     await saveFlowTemplates();
+    await _persistActiveFlowId();
     notifyListeners();
   }
 

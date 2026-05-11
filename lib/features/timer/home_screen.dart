@@ -9,7 +9,6 @@ import '../tasks/flow_editor_view.dart';
 import '../tasks/roadmap_view.dart';
 import '../tasks/task_provider.dart';
 import '../../models/app_mode.dart';
-import '../../models/workflow_node.dart';
 import 'timer_logic.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,7 +23,6 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _pulseController;
   int _selectedTabIndex = 1;
   AppMode _mode = AppMode.timer;
-  bool _isFlowDecisionDialogOpen = false;
 
   @override
   void initState() {
@@ -186,12 +184,7 @@ class _HomeScreenState extends State<HomeScreen>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final settings = context.watch<SettingsProvider>();
-    final timerProvider = context.watch<TimerProvider>();
-    final taskProvider = context.watch<TaskProvider>();
-    _maybeShowFlowDecisionDialog(timerProvider, taskProvider);
-    final backgroundColor = _selectedTabIndex == 1 && _mode == AppMode.flow
-        ? Colors.black
-        : theme.scaffoldBackgroundColor;
+    final backgroundColor = theme.scaffoldBackgroundColor;
     final foregroundColor = colorScheme.onSurface;
     final quietColor = colorScheme.onSurfaceVariant;
     final desktopBackground = colorScheme.surface;
@@ -325,67 +318,6 @@ class _HomeScreenState extends State<HomeScreen>
         );
       },
     );
-  }
-
-  void _maybeShowFlowDecisionDialog(
-    TimerProvider timerProvider,
-    TaskProvider taskProvider,
-  ) {
-    final decisionId = timerProvider.pendingDecisionNodeId;
-    if (_isFlowDecisionDialogOpen || decisionId == null) {
-      return;
-    }
-    final decisionNode = _findDecisionById(
-      taskProvider.activeFlow?.startingNodes ?? const <WorkflowNode>[],
-      decisionId,
-    );
-    if (decisionNode == null) {
-      return;
-    }
-
-    _isFlowDecisionDialogOpen = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final chooseA = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Decision'),
-          content: Text(decisionNode.question),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(decisionNode.labelB),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(decisionNode.labelA),
-            ),
-          ],
-        ),
-      );
-      _isFlowDecisionDialogOpen = false;
-      await timerProvider.resolveFlowDecision(chooseA ?? true);
-    });
-  }
-
-  DecisionNode? _findDecisionById(List<WorkflowNode> nodes, String id) {
-    for (final node in nodes) {
-      if (node is DecisionNode && node.id == id) {
-        return node;
-      }
-      if (node is DecisionNode) {
-        final inA = _findDecisionById(node.pathA, id);
-        if (inA != null) return inA;
-        final inB = _findDecisionById(node.pathB, id);
-        if (inB != null) return inB;
-      }
-      if (node is LoopNode) {
-        final inLoop = _findDecisionById(node.tasks, id);
-        if (inLoop != null) return inLoop;
-      }
-    }
-    return null;
   }
 
   Widget _buildTimerTab({
@@ -548,8 +480,224 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _RoutineTemplateBar(mode: _mode),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+Future<void> _promptSaveNewTemplate(BuildContext context, AppMode mode) async {
+  final defaultName =
+      mode == AppMode.flow ? 'My Flow Template' : 'My Pomodoro Template';
+  final controller = TextEditingController(text: defaultName);
+  final name = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Save as new template'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Template name'),
+          autofocus: true,
+          onSubmitted: (_) =>
+              Navigator.of(dialogContext).pop(controller.text.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (!context.mounted || name == null) {
+    return;
+  }
+
+  final taskProvider = context.read<TaskProvider>();
+  if (mode == AppMode.flow) {
+    await taskProvider.saveActiveFlowAsNewTemplate(name);
+  } else {
+    await taskProvider.saveCurrentAsTemplate(name);
+  }
+}
+
+class _RoutineTemplateBar extends StatelessWidget {
+  const _RoutineTemplateBar({required this.mode});
+
+  final AppMode mode;
+
+  @override
+  Widget build(BuildContext context) {
+    if (mode == AppMode.timer) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final muted = colorScheme.onSurfaceVariant;
+    final tasks = context.watch<TaskProvider>();
+
+    if (mode == AppMode.flow) {
+      if (tasks.flowTemplates.isEmpty) {
+        return Text(
+          'No saved flows yet.',
+          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          textAlign: TextAlign.end,
+        );
+      }
+
+      var flowId = tasks.activeFlow?.id;
+      if (flowId == null ||
+          !tasks.flowTemplates.any((template) => template.id == flowId)) {
+        flowId = tasks.flowTemplates.first.id;
+      }
+
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Current routine',
+              style: theme.textTheme.labelMedium?.copyWith(color: muted),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SizedBox(
+                  width: 200,
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    value: flowId,
+                    hint: const Text('Select flow'),
+                    items: tasks.flowTemplates
+                        .map(
+                          (template) => DropdownMenuItem<String>(
+                            value: template.id,
+                            child: Text(
+                              template.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (id) {
+                      if (id != null) {
+                        context.read<TaskProvider>().setActiveFlowById(id);
+                      }
+                    },
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: tasks.activeFlow == null
+                      ? null
+                      : () => _promptSaveNewTemplate(context, AppMode.flow),
+                  icon: const Icon(Icons.add_box_outlined, size: 18),
+                  label: const Text('Save as New'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (tasks.savedTemplates.isEmpty) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              'Current routine',
+              style: theme.textTheme.labelMedium?.copyWith(color: muted),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'No saved Pomodoro templates.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              textAlign: TextAlign.end,
+            ),
+            const SizedBox(height: 6),
+            TextButton.icon(
+              onPressed: () => _promptSaveNewTemplate(context, AppMode.pomodoro),
+              icon: const Icon(Icons.add_box_outlined, size: 18),
+              label: const Text('Save as New'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Current routine',
+            style: theme.textTheme.labelMedium?.copyWith(color: muted),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              SizedBox(
+                width: 200,
+                child: DropdownButton<int>(
+                  isExpanded: true,
+                  value: null,
+                  hint: const Text('Load template'),
+                  items: [
+                    for (var i = 0; i < tasks.savedTemplates.length; i++)
+                      DropdownMenuItem<int>(
+                        value: i,
+                        child: Text(
+                          tasks.savedTemplates[i].name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (index) {
+                    if (index == null) return;
+                    context.read<TaskProvider>().applyTemplate(
+                      tasks.savedTemplates[index],
+                    );
+                  },
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () =>
+                    _promptSaveNewTemplate(context, AppMode.pomodoro),
+                icon: const Icon(Icons.add_box_outlined, size: 18),
+                label: const Text('Save as New'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

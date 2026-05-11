@@ -113,6 +113,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             'Chat',
@@ -122,7 +123,8 @@ class _OnlineScreenState extends State<OnlineScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Expanded(
+          SizedBox(
+            height: chatHeight,
             child: chatMessages.isEmpty
                 ? Center(
                     child: Text(
@@ -343,26 +345,24 @@ class _OnlineScreenState extends State<OnlineScreen> {
             ),
           ),
         const SizedBox(height: 16),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: chatHeight),
-          child: chatPanel,
-        ),
+        chatPanel,
       ],
+    );
+
+    final scrollableMain = SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 48),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [mainContent, const SizedBox(height: 20)],
+        ),
+      ),
     );
 
     final content = SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-        child: widget.embedded
-            ? mainContent
-            : SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 48),
-                  child: Column(
-                    children: [mainContent, const SizedBox(height: 20)],
-                  ),
-                ),
-              ),
+        child: scrollableMain,
       ),
     );
 
