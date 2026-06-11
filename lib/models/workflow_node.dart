@@ -42,8 +42,8 @@ abstract class WorkflowNode {
 class StartNode extends WorkflowNode {
   final String title;
 
-  StartNode({String? id, String? type, required this.title})
-    : super(id: id, type: type ?? 'start');
+  StartNode({super.id, String? type, required this.title})
+    : super(type: type ?? 'start');
 
   factory StartNode.fromJson(Map<String, dynamic> json) {
     return StartNode(
@@ -67,14 +67,14 @@ class WorkNode extends WorkflowNode {
   int get durationMinutes => durationSeconds ~/ 60;
 
   WorkNode({
-    String? id,
+    super.id,
     String? type,
     required this.title,
     int? durationMinutes,
     int? durationSeconds,
     this.autoStart = false,
   }) : durationSeconds = durationSeconds ?? ((durationMinutes ?? 0) * 60),
-       super(id: id, type: type ?? 'work');
+       super(type: type ?? 'work');
 
   factory WorkNode.fromJson(Map<String, dynamic> json) {
     final seconds = json['durationSeconds'] as int?;
@@ -108,14 +108,14 @@ class DecisionNode extends WorkflowNode {
   final String labelB;
 
   DecisionNode({
-    String? id,
+    super.id,
     String? type,
     required this.question,
     required this.pathA,
     required this.pathB,
     required this.labelA,
     required this.labelB,
-  }) : super(id: id, type: type ?? 'decision');
+  }) : super(type: type ?? 'decision');
 
   factory DecisionNode.fromJson(Map<String, dynamic> json) {
     final pathAJson = json['pathA'] as List<dynamic>? ?? const <dynamic>[];
@@ -157,12 +157,12 @@ class LoopNode extends WorkflowNode {
   final List<WorkflowNode> tasks;
 
   LoopNode({
-    String? id,
+    super.id,
     String? type,
     required this.title,
     required this.totalMinutes,
     required this.tasks,
-  }) : super(id: id, type: type ?? 'loop');
+  }) : super(type: type ?? 'loop');
 
   factory LoopNode.fromJson(Map<String, dynamic> json) {
     final tasksJson = json['tasks'] as List<dynamic>? ?? const <dynamic>[];
@@ -192,8 +192,8 @@ class LoopNode extends WorkflowNode {
 class EndNode extends WorkflowNode {
   final String title;
 
-  EndNode({String? id, String? type, required this.title})
-    : super(id: id, type: type ?? 'end');
+  EndNode({super.id, String? type, required this.title})
+    : super(type: type ?? 'end');
 
   factory EndNode.fromJson(Map<String, dynamic> json) {
     return EndNode(
@@ -211,8 +211,8 @@ class EndNode extends WorkflowNode {
 class JumpNode extends WorkflowNode {
   final String targetNodeId;
 
-  JumpNode({String? id, String? type, required this.targetNodeId})
-    : super(id: id, type: type ?? 'jump');
+  JumpNode({super.id, String? type, required this.targetNodeId})
+    : super(type: type ?? 'jump');
 
   factory JumpNode.fromJson(Map<String, dynamic> json) {
     return JumpNode(
@@ -230,8 +230,8 @@ class JumpNode extends WorkflowNode {
 class ActionNode extends WorkflowNode {
   final String actionType;
 
-  ActionNode({String? id, String? type, required this.actionType})
-    : super(id: id, type: type ?? 'action');
+  ActionNode({super.id, String? type, required this.actionType})
+    : super(type: type ?? 'action');
 
   factory ActionNode.fromJson(Map<String, dynamic> json) {
     return ActionNode(

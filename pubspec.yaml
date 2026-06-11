@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.5
+  sdk: '>=3.11.4 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -37,12 +37,13 @@ dependencies:
   provider: ^6.1.5
   shared_preferences: ^2.5.5
   audioplayers: ^6.1.0
-  file_picker: ^5.5.0
+  file_picker: ^11.0.2
   csv: ^5.1.0
   google_fonts: ^6.2.1
   uuid: ^4.5.1
 
 dev_dependencies:
+  flutter_launcher_icons: ^0.13.1
   flutter_test:
     sdk: flutter
 
@@ -98,3 +99,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true # Optional, for the future
+  image_path: "assets/icon/app_icon.png" # Path to your image
+  adaptive_icon_background: "#121212" # Your new premium grey!
+  adaptive_icon_foreground: "assets/icon/app_icon.png" # Optional
